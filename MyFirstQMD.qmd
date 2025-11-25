@@ -1,0 +1,521 @@
+---
+title: "MyFirstQMD"
+author: "Zach Thomas"
+date: "2025-11-16"
+format:
+  pdf:
+    toc: false
+    number-sections: true
+    margin-left: 1in
+    margin-bottom: 1in
+    margin-right: 1in
+    margin-top: 1in
+    fig-cap-location: top
+    tbl-cap-location: top
+execute: 
+  echo: false
+  warning: false
+  error: false
+editor: visual
+---
+```{r}
+#| include: false
+#| echo: false
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(janitor) 
+library(tidyverse)
+library(dcData)
+library(ggplot2)
+#load data 
+army <- read.csv("Army.csv", header = FALSE)
+#view our data
+army
+
+
+
+#remove the header 
+army1 <- army[-1,] 
+
+paygrades <- army$V1
+valid_paygrades <- paygrades[grepl("^[EWO]\\d+$", paygrades)]
+
+# Clean result 
+valid_paygrades <- trimws(valid_paygrades)
+
+# Check result
+valid_paygrades
+
+
+army1 
+
+#remove total columns 
+army2 <- army1[, -seq(1, ncol(army1), 3)] 
+army2 
+
+#remove total section at end 
+army3 <- army2[,-( (ncol(army2)-1):ncol(army2) )] 
+army3
+
+print(colnames(army))
+
+army3_col <- colnames(army3) <- c(
+                  "Army_Male", "Army_Female",
+                  "Navy_Male", "Navy_Female",
+                  "Marines_Male", "Marines_Female",
+                  "AirForce_Male", "AirForce_Female",
+                  "SpaceForce_Male", "SpaceForce_Female")
+army3_col
+
+
+print(head(army3, 5))
+
+army4 <- army3[-c(1,2),]
+army4
+
+army4rows <- army4[-c(10,27,28,29),]
+army4rows
+
+
+army4_clean <- army4rows[1:length(valid_paygrades), ]
+army4_clean
+
+army4_clean$PayGrade <- valid_paygrades
+
+#add paygrades into fit
+army4_clean3 <- army4_clean %>%
+  mutate(across(-PayGrade, ~ as.numeric(gsub(",", "", .x))))
+
+#Make long
+army4_long <- army4_clean3 %>%
+  pivot_longer(
+    cols = -PayGrade,
+    names_to = c("Branch", "Gender"),
+    names_sep = "_",
+    values_to = "Count"
+  )
+army4_long
+# drop na
+army4_na <- army4_long %>%
+  filter(!is.na(Count))
+
+#uncount
+army_soldiers <- army4_na %>%
+  tidyr::uncount(weights = Count)
+army_soldiers
+
+#male frequency
+male_freq <- army_soldiers %>%
+  filter(Gender == "Male") %>%
+  count(Branch, PayGrade) %>%
+  group_by(Branch) %>%
+  mutate(Relative_Frequency = n / sum(n)) %>%
+  ungroup()
+male_freq
+
+#female frequency
+female_freq <- army_soldiers %>%
+  filter(Gender == "Female") %>%
+  count(Branch, PayGrade) %>%
+  group_by(Branch) %>%
+  mutate(Relative_Frequency = n / sum(n)) %>%
+  ungroup()
+female_freq
+
+chosen_branch <- "Army"
+
+branch_freq <- bind_rows(
+  male_freq  %>% mutate(Sex = "Male"),
+  female_freq %>% mutate(Sex = "Female")
+) %>%
+  filter(Branch == chosen_branch)
+
+freq_table_output <- branch_freq %>%
+  select(Sex, PayGrade, Relative_Frequency) %>%
+  tidyr::pivot_wider(
+    names_from  = PayGrade,
+    values_from = Relative_Frequency,
+    values_fill = 0
+  )
+
+data("BabyNames")
+
+
+selected_names <- c("Emma", "Olivia", "Jacob", "Noah", "Lucas", "Zachary")
+
+
+totals <- BabyNames %>%
+  group_by(year, sex) %>%
+  summarise(total_births = sum(count), .groups = "drop")
+
+
+name_trends <- BabyNames %>%
+  filter(name %in% selected_names) %>%
+  group_by(year, sex, name) %>%
+  summarise(name_count = sum(count), .groups = "drop") %>%
+  left_join(totals, by = c("year", "sex")) %>%
+  mutate(prop = name_count / total_births)
+
+
+baby_chart <- ggplot(name_trends, aes(x = year, y = prop, color = name)) +
+  geom_line(linewidth = 1.2) +
+  facet_wrap(~ sex, ncol = 1) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.01),
+    limits = c(0, 0.03)
+  ) +
+  labs(
+    title = "Popularity of Selected Baby Names Over Time",
+    x = "Year",
+    y = "Proportion of births (%)",
+    color = "Name"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+baby_chart
+
+box_prob <- function(x,len,wid){
+  new_len = len - 2*x
+  new_wid = wid - 2*x
+  volume = new_len * new_wid * x
+  return(volume)
+}
+
+x_range <- data.frame(x = seq(from = 0, to = 18, by = 0.1))
+# update to ggplot
+box_plot <- ggplot(
+  data = x_range,
+  mapping = aes(x = x)
+) +
+  stat_function(
+    fun = box_prob,
+    args = list(len = 36, wid = 48),
+    linewidth = 1.2,
+    color = "#1B69AF"  
+  ) +
+  labs(
+    title = "Volume of an Box, 36 × 48 Inch Sheet",
+    x = "Cut Size (inches)",
+    y = "Volume (cubic inches)",
+    alt = "A smooth curve showing the volume of an open-top box as a function of cut-out size from a 36 by 48 inch sheet. The plot rises, reaches a maximum, and then decreases."
+  ) +
+  theme_minimal(base_size = 13)
+
+x_vol_vals <- seq(0,18,.001)
+volume_interval <- box_prob(x_vol_vals, 36, 48)
+max_volume <- max(volume_interval)
+optimal_x <- x_vol_vals[which.max(volume_interval)]
+max_volume
+optimal_x
+```
+
+
+
+
+# Armed Forces Wrangling and Redux
+
+For our analysis, we want to first bring back our frequency tables from the old activities to see if the frequencies match up between the ranks and genders. The count will be insignificant due to the fact we are using frequencies.
+
+For this, we can make a two-way frequency table to compare.
+
+```{r}
+#| label: Frequency-Table
+#| echo: false
+freq_table_output
+```
+
+Here we can see that the frequencies are quite similar for most of the lower-paying ranks. Most frequencies are close enough to the point that we can assume randomness is what sees them apart. However, we start to see a bit of a trend towards more males as we go higher in the ranks. The frequencies are not too far apart, so there might be other reasons; however for now without exclusive testing, we can say gender may only have a slight effect on paygrade in the higher ranks.
+
+# Popular Baby Names
+
+For this section, we are going to bring back activity 13's popular baby names data and the visualization we made that tracks the popularity over time.
+
+Our chart is a time series line chart of randomly selected names and their popularity over the years in terms of the percentage of babies named that in said year. The chart is also split into male and female to show the proportions on a scale specifically for the popular gender of that name.
+
+```{r}
+#| label: baby-names-plot
+#| echo: false
+baby_chart
+```
+
+Here we see our chart show some very interesting trends. Firstly, a description of the chart. We see each name have its own unique color and line on both chart that helps us to see some interesting things. We also us percentage as it gives a better overall view compared to time, there are more babies now than in the 1800s so a count chart would be heavily skewed towards the present. The actual chart shows us that female names we picked are semi popular now and the name Emma had a stretch of popularity around the late 1800s and early 1900s however faded into obscurity until now where it resurged. The name Olivia had almost no popularity until the recent years where it spiked up to around 1% post 2000. We see the male names we randomly selected had almost no popularity until around the late 1900s where they all slowly started finding their place. One very interesting thing I see in both charts is the female names in the male chart and male names in the female chart have very small bumps throughout that show that there were some one off or two off cases where females were named on of the male names or vice versa. 
+
+# Box Problem
+For this section we bring back activity 4 on functions. We are updating our box function that calculates volume of a box based on dimensions we give it. It also includes a plot that optimizes to find the largest volume possible with the dimensions we have. 
+
+```{r}
+#| label: box-plot
+#| echo: false
+box_plot
+```
+Here we see that with our new dimensions we get a very large area with a clear optimum cut value to get said largest volume. We can see in the plot there is a peak and decline 
+
+```{r}
+#| label: Max Volume and X
+#| echo: false
+max_volume
+optimal_x
+```
+Here we can see our max volume and optimal x from the chart using our function in the appendix. The function used a interval of 0.001 so there might technically be a more optimal answer, however we can generally say its around here. 
+
+
+# Reflection
+I feel like in this course so far I have learned a lot of good techniques, packages, and standards that will help me going forward as a statistician. For my career as an actuary I have heard that we need to use R a lot in the workplace. This class has helped me develop proficiencies and problem solving skills in are due to the difficulty of the activities. I feel as though I have gone from a complete R newbie to being semi-capable in a short time. One thing I feel has been very useful is GGPlot. I see in my stats and data visualization class that GGPlot is widely used and necessary to make pretty and readable visualizations that can portray the data we need to show. One thing I wish to learn is machine learning in R. It is one of my interests and hope with the knowledge learned in this class I will be able to undertake in the near future. 
+
+
+
+
+
+
+
+# Code Appendix
+
+```{r}
+#| label: Imports
+#| echo: true
+
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(janitor) 
+library(tidyverse)
+library(dcData)
+library(ggplot2)
+
+
+```
+
+
+
+
+```{r}
+#| label: army-wrangling
+#| echo: true
+# Load tidyverse
+
+#load data 
+army <- read.csv("Army.csv", header = FALSE)
+#view our data
+army
+
+
+
+#remove the header 
+army1 <- army[-1,] 
+
+paygrades <- army$V1
+valid_paygrades <- paygrades[grepl("^[EWO]\\d+$", paygrades)]
+
+# Clean result 
+valid_paygrades <- trimws(valid_paygrades)
+
+# Check result
+valid_paygrades
+
+
+army1 
+
+#remove total columns 
+army2 <- army1[, -seq(1, ncol(army1), 3)] 
+army2 
+
+#remove total section at end 
+army3 <- army2[,-( (ncol(army2)-1):ncol(army2) )] 
+army3
+
+print(colnames(army))
+
+army3_col <- colnames(army3) <- c(
+                  "Army_Male", "Army_Female",
+                  "Navy_Male", "Navy_Female",
+                  "Marines_Male", "Marines_Female",
+                  "AirForce_Male", "AirForce_Female",
+                  "SpaceForce_Male", "SpaceForce_Female")
+army3_col
+
+
+print(head(army3, 5))
+
+army4 <- army3[-c(1,2),]
+army4
+
+army4rows <- army4[-c(10,27,28,29),]
+army4rows
+
+
+army4_clean <- army4rows[1:length(valid_paygrades), ]
+army4_clean
+
+army4_clean$PayGrade <- valid_paygrades
+
+#add paygrades into fit
+army4_clean3 <- army4_clean %>%
+  mutate(across(-PayGrade, ~ as.numeric(gsub(",", "", .x))))
+
+#Make long
+army4_long <- army4_clean3 %>%
+  pivot_longer(
+    cols = -PayGrade,
+    names_to = c("Branch", "Gender"),
+    names_sep = "_",
+    values_to = "Count"
+  )
+army4_long
+# drop na
+army4_na <- army4_long %>%
+  filter(!is.na(Count))
+
+#uncount
+army_soldiers <- army4_na %>%
+  tidyr::uncount(weights = Count)
+army_soldiers
+
+#male frequency
+male_freq <- army_soldiers %>%
+  filter(Gender == "Male") %>%
+  count(Branch, PayGrade) %>%
+  group_by(Branch) %>%
+  mutate(Relative_Frequency = n / sum(n)) %>%
+  ungroup()
+male_freq
+
+#female frequency
+female_freq <- army_soldiers %>%
+  filter(Gender == "Female") %>%
+  count(Branch, PayGrade) %>%
+  group_by(Branch) %>%
+  mutate(Relative_Frequency = n / sum(n)) %>%
+  ungroup()
+female_freq
+
+
+```
+
+
+
+```{r}
+#| label: Two Way Frequency
+#| echo: true
+
+
+chosen_branch <- "Army"
+
+branch_freq <- bind_rows(
+  male_freq  %>% mutate(Sex = "Male"),
+  female_freq %>% mutate(Sex = "Female")
+) %>%
+  filter(Branch == chosen_branch)
+
+freq_table_output <- branch_freq %>%
+  select(Sex, PayGrade, Relative_Frequency) %>%
+  tidyr::pivot_wider(
+    names_from  = PayGrade,
+    values_from = Relative_Frequency,
+    values_fill = 0
+  )
+```
+
+
+
+```{r}
+#| label: Baby_Names
+#| echo: true
+
+data("BabyNames")
+
+
+selected_names <- c("Emma", "Olivia", "Jacob", "Noah", "Lucas", "Zachary")
+
+
+totals <- BabyNames %>%
+  group_by(year, sex) %>%
+  summarise(total_births = sum(count), .groups = "drop")
+
+
+name_trends <- BabyNames %>%
+  filter(name %in% selected_names) %>%
+  group_by(year, sex, name) %>%
+  summarise(name_count = sum(count), .groups = "drop") %>%
+  left_join(totals, by = c("year", "sex")) %>%
+  mutate(prop = name_count / total_births)
+
+
+baby_chart <- ggplot(name_trends, aes(x = year, y = prop, color = name)) +
+  geom_line(linewidth = 1.2) +
+  facet_wrap(~ sex, ncol = 1) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.01),
+    limits = c(0, 0.03)
+  ) +
+  labs(
+    title = "Popularity of Selected Baby Names Over Time",
+    x = "Year",
+    y = "Proportion of births (%)",
+    color = "Name"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+baby_chart
+
+```
+
+
+```{r}
+#| label: Box Problem
+#| echo: true
+
+box_prob <- function(x,len,wid){
+  new_len = len - 2*x
+  new_wid = wid - 2*x
+  volume = new_len * new_wid * x
+  return(volume)
+}
+
+x_range <- data.frame(x = seq(from = 0, to = 18, by = 0.1))
+# update to ggplot
+box_plot <- ggplot(
+  data = x_range,
+  mapping = aes(x = x)
+) +
+  stat_function(
+    fun = box_prob,
+    args = list(len = 36, wid = 48),
+    linewidth = 1.2,
+    color = "#1B69AF"  
+  ) +
+  labs(
+    title = "Volume of an Box, 36 × 48 Inch Sheet",
+    x = "Cut Size (inches)",
+    y = "Volume (cubic inches)",
+    alt = "A smooth curve showing the volume of an open-top box as a function of cut-out size from a 36 by 48 inch sheet. The plot rises, reaches a maximum, and then decreases."
+  ) +
+  theme_minimal(base_size = 13)
+
+```
+
+
+```{r}
+#| label: Max_Values
+#| echo: true
+x_vol_vals <- seq(0,18,.001)
+volume_interval <- box_prob(x_vol_vals, 36, 48)
+max_volume <- max(volume_interval)
+optimal_x <- x_vol_vals[which.max(volume_interval)]
+max_volume
+optimal_x
+```
+
+
+
